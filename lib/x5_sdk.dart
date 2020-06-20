@@ -16,13 +16,25 @@ class X5Sdk {
     }
   }
 
-  ///加载内核，没有内核会自动下载,加载失败会自动调用系统内核
+  ///加载内核，没有内核会自动下载,加载失败会自动调用系统内核。
+  ///不要重复请求。如需要重新加载可重启应用
+  ///android 6.0+调用之前需动态请求权限（电话和存储权限）
   static Future<bool> init() async {
     if (defaultTargetPlatform == TargetPlatform.android) {
       bool res = await _channel.invokeMethod("init");
       return res;
     } else {
       return false;
+    }
+  }
+
+  ///获取x5的日志
+  static Future<String> getCrashInfo() async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      var res = await _channel.invokeMethod("getCarshInfo");
+      return res;
+    } else {
+      return "";
     }
   }
 
@@ -40,11 +52,11 @@ class X5Sdk {
     }
   }
 
-  ///screenMode 播放参数，103横屏全屏，104竖屏全屏。默认103
+  ///screenMode 播放参数，103横屏全屏，104竖屏全屏。默认102
   static Future<void> openVideo(String url, {int screenMode}) async {
     if (defaultTargetPlatform == TargetPlatform.android) {
       final Map<String, dynamic> params = <String, dynamic>{
-        'screenMode': screenMode ?? 103,
+        'screenMode': screenMode ?? 102,
         'url': url
       };
       return await _channel.invokeMethod("openVideo", params);
@@ -115,12 +127,32 @@ class X5Sdk {
   }
 
   ///打开简单的x5webview
-  static Future<void> openWebActivity(String url, {String title}) async {
+  static Future<void> openWebActivity(String url,
+      {String title,
+      Map<String, String> headers,
+      InterceptUrlCallBack callback}) async {
     if (defaultTargetPlatform == TargetPlatform.android) {
       final Map<String, dynamic> params = <String, dynamic>{
         'title': title,
-        'url': url
+        'url': url,
+        'headers': headers,
+        'isUrlIntercept': callback != null
       };
+      if (callback != null) {
+        _channel.setMethodCallHandler((call) {
+          try {
+            if (call.method == "onUrlLoad") {
+              print("onUrlLoad----${call.arguments}");
+              Map arg = call.arguments;
+              callback(arg["url"], Map<String, String>.from(arg["headers"]));
+            }
+          } catch (e) {
+            print(e);
+          }
+          return;
+        });
+      }
+
       return await _channel.invokeMethod("openWebActivity", params);
     } else {
       return;
@@ -154,6 +186,8 @@ typedef void InstallFinish();
 typedef void DownloadFinish();
 typedef void DownloadProgress(int progress);
 
+typedef void InterceptUrlCallBack(String url, Map<String, String> headers);
+
 ///X5内核的下载和安装监听
 class X5SdkListener {
   ///安装完成监听
@@ -166,5 +200,7 @@ class X5SdkListener {
   DownloadProgress onDownloadProgress;
 
   X5SdkListener(
-      this.onInstallFinish, this.onDownloadFinish, this.onDownloadProgress);
+      {@required this.onInstallFinish,
+      @required this.onDownloadFinish,
+      @required this.onDownloadProgress});
 }

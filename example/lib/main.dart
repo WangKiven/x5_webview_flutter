@@ -1,33 +1,24 @@
+import 'dart:convert';
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:x5_webview/x5_sdk.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'demo.dart';
 
 import 'package:dio/dio.dart';
 
 void main() {
-  X5Sdk.setDownloadWithoutWifi(true); //没有x5内核，是否在非wifi模式下载内核。默认false
-  X5Sdk.init().then((isOK) {
-    print(isOK ? "X5内核成功加载" : "X5内核加载失败");
-  });
   runApp(MyApp());
 }
 
-class MyApp extends StatefulWidget {
-  @override
-  _MyAppState createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  @override
-  void initState() {
-    super.initState();
-  }
-
+class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(home: HomePage());
+    return MaterialApp(home: HomePage(),theme: ThemeData(primarySwatch: Colors.blue),);
   }
 }
 
@@ -37,6 +28,14 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  var crashInfo;
+  bool isLoadOk=false;
+  @override
+  void initState() {
+    super.initState();
+    loadX5();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -58,7 +57,7 @@ class _HomePageState extends State<HomePage> {
                   if (canUseTbsPlayer) {
                     showInputDialog(
                         onConfirm: (url) async {
-                          await X5Sdk.openVideo(url);
+                          await X5Sdk.openVideo(url, screenMode: 102);
                         },
                         defaultText:
                             "https://youku.com-l-youku.com/20181221/5625_d9733a43/index.m3u8");
@@ -103,22 +102,29 @@ class _HomePageState extends State<HomePage> {
                                           ),
                                         );
                                       });
+                                  var dir = await getExternalStorageDirectory();
+                                  print(await getExternalStorageDirectory());
+                                  print(await getApplicationSupportDirectory());
+                                  print(
+                                      await getApplicationDocumentsDirectory());
                                   var response = await Dio().download(
-                                      "http://lc-QMTBhNKI.cn-n1.lcfile.com/aa1b149fab1fd3c7d88b/%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F%E6%94%AF%E6%8C%81%E5%88%97%E8%A1%A8.xlsx",
-                                      "/sdcard/download/FileList.xlsx");
+                                      "http://lc-QMTBhNKI.cn-n1.lcfile.com/fc441aa8ff4738cc3f85/FileList.xlsx",
+                                      "${dir.path}/FileList.xlsx");
                                   print(response.data);
                                   Navigator.pop(context);
-                                } catch (e) {
-                                  print(e);
+                                } on DioError catch (e) {
                                   Navigator.pop(context);
+                                  print(e.message);
                                 }
                               },
                               child: Text("下载"),
                             ),
                             FlatButton(
                               onPressed: () async {
+                                var dir = await getExternalStorageDirectory();
+                                print(dir);
                                 var msg = await X5Sdk.openFile(
-                                    "/sdcard/download/FileList.xlsx");
+                                    "${dir.path}/FileList.xlsx",style: "1",topBarBgColor: "#2196F3");
                                 print(msg);
                               },
                               child: Text("打开"),
@@ -148,12 +154,30 @@ class _HomePageState extends State<HomePage> {
             RaisedButton(
                 onPressed: () async {
                   showInputDialog(
-                      onConfirm: (url) async {
-                        await X5Sdk.openWebActivity(url, title: "web页面");
+                      onConfirm: (url){
+                        openUrl(url);
                       },
-                      defaultText: "https://baidu.com");
+                      defaultText: "https://www.baidu.com");
                 },
                 child: Text("x5webviewActivity")),
+            RaisedButton(
+                onPressed: () async {
+                  var fileHtmlContents =
+                      await rootBundle.loadString("assets/index.html");
+                  var url = Uri.dataFromString(fileHtmlContents,
+                          mimeType: 'text/html',
+                          encoding: Encoding.getByName('utf-8'))
+                      .toString();
+
+                  await X5Sdk.openWebActivity(url, title: "本地html示例");
+                },
+                child: Text("本地html")),
+            RaisedButton(
+                onPressed: () async {
+                  loadX5();
+                },
+                child: Text("重新加载内核")),
+            Text("内核状态：\n${crashInfo==null ? "未加载": isLoadOk? "加载成功---\n"+crashInfo.toString(): "加载失败---\n"+crashInfo.toString()}")
           ],
         ),
       ),
@@ -186,6 +210,105 @@ class _HomePageState extends State<HomePage> {
             ],
           );
         });
+  }
+
+  var isLoad = false;
+
+  void loadX5() async {
+    if (isLoad) {
+      showMsg("你已经加载过x5内核了,如果需要重新加载，请重启");
+      return;
+    }
+
+    //请求动态权限，6.0安卓及以上必有
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.phone,
+      Permission.storage,
+    ].request();
+    //判断权限
+    if (!(statuses[Permission.phone].isGranted &&
+        statuses[Permission.storage].isGranted)) {
+      showDialog(
+          context: context,
+          builder: (context) {
+            return AlertDialog(
+              content: Text("请同意所有权限后再尝试加载X5"),
+              actions: [
+                FlatButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    child: Text("取消")),
+                FlatButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      loadX5();
+                    },
+                    child: Text("再次加载")),
+                FlatButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      openAppSettings();
+                    },
+                    child: Text("打开设置页面")),
+              ],
+            );
+          });
+      return;
+    }
+
+    //没有x5内核，是否在非wifi模式下载内核。默认false
+    await X5Sdk.setDownloadWithoutWifi(true);
+
+    //内核下载安装监听
+    await X5Sdk.setX5SdkListener(X5SdkListener(onInstallFinish: () {
+      print("X5内核安装完成");
+    }, onDownloadFinish: () {
+      print("X5内核下载完成");
+    }, onDownloadProgress: (int progress) {
+      print("X5内核下载中---$progress%");
+    }));
+    print("----开始加载内核----");
+    var isOk = await X5Sdk.init();
+    print(isOk ? "X5内核成功加载" : "X5内核加载失败");
+
+    var x5CrashInfo = await X5Sdk.getCrashInfo();
+    print(x5CrashInfo);
+    if(isOk){
+      x5CrashInfo="tbs_core_version" + x5CrashInfo.split("tbs_core_version")[1];
+    }
+    setState(() {
+      isLoadOk=isOk;
+      crashInfo = x5CrashInfo;
+    });
+
+    isLoad = true;
+  }
+
+  void showMsg(String msg) {
+    showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            content: Text(msg),
+            actions: [
+              FlatButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: Text("我知道了"))
+            ],
+          );
+        });
+  }
+
+  void openUrl(String url) {
+    X5Sdk.openWebActivity(url, title: "web页面",callback: (url,headers){
+      print("拦截到url================$url");
+      print("headers================$headers");
+      //可以递归无限套娃
+      openUrl(url);
+    });
   }
 }
 

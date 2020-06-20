@@ -17,23 +17,31 @@ dependencies:
   x5_webview: ^x.x.x //最新版本见上方
 ```
 
-[为兼容x64手机](https://x5.tencent.com/tbs/technical.html#/detail/sdk/1/34cf1488-7dc2-41ca-a77f-0014112bcab7)，在bulid.gradle里面的defaultConfig添加ndk支持
+初始化x5。(安卓6.0+需在init之前请求动态权限，可以使用[permission_handler](https://pub.flutter-io.cn/packages/permission_handler)，详情见example/lib/main.dart)
 ```
-        ndk {
-            abiFilters "armeabi-v7a"
-        }
+var isOk = await X5Sdk.init();
+print(isOk ? "X5内核成功加载" : "X5内核加载失败");
 ```
 
-在启动时，初始化x5
+如果你只是想要简单的展示web页面，可使用以下代码直接打开一个webActivity，
+性能更佳(推荐使用，视频播放也可以这个api)
 ```
-void main() {
-  X5Sdk.init().then((isOK) {
-    print(isOK ? "X5内核成功加载" : "X5内核加载失败");
-  });
-  runApp(MyApp());
-}
+X5Sdk.openWebActivity("https://www.baidu.com",title: "web页面");
 ```
-使用内嵌webview
+
+使用TBSPlayer直接全屏播放视频(screenMode自行测试，103横屏 104竖屏，官方默认使用102第一次点击全屏无反应)
+```
+    var isOk = await X5Sdk.openVideo(
+    "https://ifeng.com-l-ifeng.com/20180528/7391_46b6cf3b/index.m3u8",screenMode: 102);
+```
+
+打开本地文件(格式支持较多，视频音频图片办公文档压缩包等等，[支持文件详情](http://lc-qmtbhnki.cn-n1.lcfile.com/aa1b149fab1fd3c7d88b/%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F%E6%94%AF%E6%8C%81%E5%88%97%E8%A1%A8.xlsx))
+```
+var errorMsg = await X5Sdk.openFile("/sdcard/download/FileList.xlsx");
+print(errorMsg);
+```
+
+## 使用内嵌webview(可能会有些bug)
 
 ```
 return Scaffold(
@@ -69,25 +77,21 @@ return Scaffold(
             ),
     );
 ```
-内嵌webview js与flutter互调  
-  
+内嵌webview js与flutter互调
 * flutter调用js
 ```
 var body = await _controller.evaluateJavascript("document.body.innerHTML");
 ```
 * js调用flutter
 ```
-    var listName = ["X5Web", "Toast"];
-    _controller.addJavascriptChannels(listName, (name, data) {
-      switch (name) {
-        case "X5Web":
-          print(data);
-          break;
-        case "Toast":
-          print(data);
-          break;
-      }
-    });
+     X5WebView(
+        ...
+        javascriptChannels: JavascriptChannels(
+            ["X5Web", "Toast"], (name, data) {
+          switch (name) {
+            ...
+          }
+        }))
 ```
 * js代码
 ```
@@ -95,28 +99,15 @@ X5Web.postMessage("XXX")
 Toast.postMessage("YYY")
 ```
 
-使用TBSPlayer直接播放视频
+## 打开本地html文件(使用assets文件，内嵌webview同理)
 ```
- var canUseTbsPlayer = await X5Sdk.canUseTbsPlayer();
- if (canUseTbsPlayer) {
-    var isOk = await X5Sdk.openVideo(
-    "https://ifeng.com-l-ifeng.com/20180528/7391_46b6cf3b/index.m3u8");
- } else {
-     print("x5Video不可用");
- }
+var fileS = await rootBundle.loadString("assets/index.html");
+var url = Uri.dataFromString(fileS,
+                          mimeType: 'text/html',
+                          encoding: Encoding.getByName('utf-8'))
+                      .toString();
+X5Sdk.openWebActivity(url, title: "本地html示例");
 ```
-打开本地文件(格式支持较多，视频音频图片办公文档压缩包等等，[支持文件详情](http://lc-qmtbhnki.cn-n1.lcfile.com/aa1b149fab1fd3c7d88b/%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F%E6%94%AF%E6%8C%81%E5%88%97%E8%A1%A8.xlsx))
-```
-var msg = await X5Sdk.openFile("/sdcard/download/FileList.xlsx");
-print(msg);
-```
-如果你只是想要简单的展示web页面，可使用以下代码直接打开一个webActivity，
-性能更佳
-```
-X5Sdk.openWebActivity("https://www.baidu.com",title: "web页面");
-```
-
-## 
 
 ## 注意事项
 * 该插件暂时只支持Android手机，IOS会使用无效。ios可使用[webview_flutter](https://pub.flutter-io.cn/packages/webview_flutter)或其他已实现IOS WXWebView插件
@@ -124,25 +115,56 @@ X5Sdk.openWebActivity("https://www.baidu.com",title: "web页面");
     ```
     http://debugtbs.qq.com
     ```
-
 * 请使用真机测试，模拟器可能不能正常显示
 
-* 如果添加ndk支持后，打开app闪退请添加以下运行配置，或者使用android sdk运行。
-    ```
-    flutter build apk --debug --target-platform=android-arm
-    flutter run --use-application-binary=build/app/outputs/apk/debug/app-debug.apk
-    ```
+* 如果测试正常，打包后不能加载，可以尝试使用android studio打开android目录直接打包apk。
+
 * android9.0版本webview联不了网在manifest添加
     ```
     <application
         ...
-        android:usesCleartextTraffic="true"
-       >
+        android:usesCleartextTraffic="true">
     </application>
     ```
+* android7.0版本打开文件需要在manifest的application内添加(xml文件已在插件内，无需自己创建)
+    ```
+          <!--        不使用androidx 请用android:name="android.support.v4.content.FileProvider"-->    
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/x5webview_file_paths" />
+        </provider>  
+    ```
+
+* X5Sdk.openWebActivity actionbar颜色自定义
+  ```
+  //1.
+  implementation "androidx.appcompat:appcompat:1.1.0"
+
+  //2.
+    <style name="AppTheme" parent="ThemeOverlay.AppCompat.Dark">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">#2196F3</item>
+        <item name="colorPrimaryDark">#1976D2</item>
+        <item name="colorAccent">#FF4081</item>
+        <item name="windowNoTitle">false</item>
+        <item name="windowActionBar">true</item>
+    </style>
+
+  //3.
+  <application
+        ...
+        android:theme="@style/AppTheme">
+
+  ```
+
 * 有比较急的问题可以加我QQ：793710663
 
-## 示例程序下载
+## 示例程序下载(密码：123456)
 
 [apk下载](https://www.pgyer.com/x5_webview)
 

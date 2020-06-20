@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:x5_webview/x5_webview.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 class DemoWebViewPage extends StatefulWidget {
   final url;
@@ -37,56 +38,73 @@ class _DemoWebViewPageState extends State<DemoWebViewPage> {
                     ? X5WebView(
                         url: url,
                         javaScriptEnabled: true,
+                        javascriptChannels: JavascriptChannels(
+                            ["X5Web", "Toast"], (name, data) {
+                          switch (name) {
+                            case "X5Web":
+                              showDialog(
+                                  context: context,
+                                  builder: (context) {
+                                    return AlertDialog(
+                                      title: Text("获取到的字符串为："),
+                                      content: Text(data),
+                                    );
+                                  });
+                              break;
+                            case "Toast":
+                              print(data);
+                              break;
+                          }
+                        }),
                         onWebViewCreated: (control) {
                           _controller = control;
+//                          var listName = ["X5Web", "Toast"];
+//                          _controller.addJavascriptChannels(listName,
+//                                  (name, data) {
+//                                switch (name) {
+//                                  case "X5Web":
+//                                    showDialog(
+//                                        context: context,
+//                                        builder: (context) {
+//                                          return AlertDialog(
+//                                            title: Text("获取到的字符串为："),
+//                                            content: Text(data),
+//                                          );
+//                                        });
+//                                    break;
+//                                  case "Toast":
+//                                    print(data);
+//                                    break;
+//                                }
+//                              });
                         },
                         onPageFinished: () async {
-                          var isSuccess =
-                              await _controller.isX5WebViewLoadSuccess();
-                          print(isSuccess ? "x5内核加载成功" : "x5内核加载失败");
                           var url = await _controller.currentUrl();
                           print(url);
-                          var listName = ["X5Web", "Toast"];
-                          _controller.addJavascriptChannels(listName,
-                              (name, data) {
-                            switch (name) {
-                              case "X5Web":
-                                showDialog(
-                                    context: context,
-                                    builder: (context) {
-                                      return AlertDialog(
-                                        title: Text("获取到的字符串为："),
-                                        content: Text(data),
-                                      );
-                                    });
-                                break;
-                              case "Toast":
-                                print(data);
-                                break;
-                            }
-                          });
                         },
                         onProgressChanged: (progress) {
-                          print("webview加载进度------$progress");
+                          print("webview加载进度------$progress%");
                         },
                       )
                     :
                     //可替换为其他已实现ios webview,此处使用webview_flutter
-                    Container()
-//          WebView(
-//              initialUrl: url,
-//              javascriptMode: JavascriptMode.unrestricted,
-//              javascriptChannels: [JavascriptChannel(name: "X5Web", onMessageReceived: (msg){
-//                print(msg);
-//              })].toSet(),
-//              onWebViewCreated: (control) {
-////                _otherController = control;
-////                var body = _otherController
-////                    .evaluateJavascript('document.body.innerHTML');
-////                print(body);
-//              },
-//            )
-                ),
+                    WebView(
+                        initialUrl: url,
+                        javascriptMode: JavascriptMode.unrestricted,
+                        javascriptChannels: [
+                          JavascriptChannel(
+                              name: "X5Web",
+                              onMessageReceived: (msg) {
+                                print(msg);
+                              })
+                        ].toSet(),
+                        onWebViewCreated: (control) {
+//                _otherController = control;
+//                var body = _otherController
+//                    .evaluateJavascript('document.body.innerHTML');
+//                print(body);
+                        },
+                      )),
             RaisedButton(
               onPressed: () {
                 _controller.evaluateJavascript(
